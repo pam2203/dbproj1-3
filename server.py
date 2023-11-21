@@ -10,13 +10,14 @@ Read about it online.
 """
 import os
   # accessible as a variable in index.html:
+import random
+from datetime import date
 from sqlalchemy import *
 from sqlalchemy.pool import NullPool
-from flask import Flask, request, render_template, g, redirect, Response, abort
+from flask import Flask, request, render_template, g, redirect, Response, abort, url_for
 
 tmpl_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'templates')
 app = Flask(__name__, template_folder=tmpl_dir)
-
 
 #
 # The following is a dummy URI that does not connect to a valid database. You will need to modify it to connect to your Part 2 database in order to use the data.
@@ -29,7 +30,7 @@ app = Flask(__name__, template_folder=tmpl_dir)
 #
 #     DATABASEURI = "postgresql://gravano:foobar@34.75.94.195/proj1part2"
 #
-DATABASEURI = "postgresql://user:password@34.75.94.195/proj1part2"
+DATABASEURI = "postgresql://pam2203:8864@34.74.171.121/proj1part2"
 
 
 #
@@ -96,7 +97,7 @@ def teardown_request(exception):
 # see for routing: https://flask.palletsprojects.com/en/2.0.x/quickstart/?highlight=routing
 # see for decorators: http://simeonfranklin.com/blog/2012/jul/1/python-decorators-in-12-steps/
 #
-@app.route('/')
+@app.route('/index')
 def index():
   """
   request is a special object that Flask provides to access web request information:
@@ -116,7 +117,7 @@ def index():
   #
   # example of a database query 
   #
-  cursor = g.conn.execute(text("SELECT name FROM test"))
+  cursor = g.conn.execute(text("SELECT name FROM test;"))
   g.conn.commit()
 
   # 2 ways to get results
@@ -127,11 +128,11 @@ def index():
     names.append(result[0])  
 
   # Indexing result by column name
-  names = []
-  results = cursor.mappings().all()
-  for result in results:
-    names.append(result["name"])
-  cursor.close()
+#  names = []
+#  results = cursor.mappings().all()
+#  for result in results:
+#    names.append(result["name"])
+#  cursor.close()
 
   #
   # Flask uses Jinja templates, which is an extension to HTML where you can
@@ -166,7 +167,13 @@ def index():
   # render_template looks in the templates/ folder for files.
   # for example, the below file reads template/index.html
   #
-  return render_template("index.html", **context)
+@app.route('/')
+def home():
+  return render_template("home.html")
+
+@app.route('/home')
+def home2():
+  return redirect ('/')
 
 #
 # This is an example of a different path.  You can see it at:
@@ -180,15 +187,128 @@ def index():
 def another():
   return render_template("another.html")
 
+@app.route('/resolve')
+def resolve():
+  return render_template("resolve.html")
+
+@app.route('/landlord')
+def landlord():
+  return render_template("landlord.html")
+
+@app.route('/report')
+def report():
+  return render_template("report.html")
+
+@app.route('/submitted')
+def submitted():
+  return render_template("submitted.html")
+
+@app.route('/resolve/enter')
+def resolveLL(IssueCount):
+  return render_template('resolve.html', IssueList = g.count)
+
+
+
 
 # Example of adding new data to the database
 @app.route('/add', methods=['POST'])
 def add(): 
   name = request.form['name']
   params_dict = {"name":name}
-  g.conn.execute(text('INSERT INTO test(name) VALUES (:name)'), params_dict)
+  g.conn.execute(text('INSERT INTO test(name) VALUES (:name);'), params_dict)
   g.conn.commit()
   return redirect('/')
+
+@app.route('/report', methods=['POST'])
+def issue(): 
+  desc = request.form['issueDesc']
+  name = request.form['userName']
+  floorRaw = request.form['userFloor']
+  if not isinstance(floorRaw, int):
+        return render_template('report.html', fail = "Please put a number as the floor")
+  if not desc or not name or not floorRaw:
+    return render_template('report.html', fail = "Please fill out all fields")
+  floor = int(floorRaw)
+  params_dict = {"desc":desc, "name":name, "floor":floor}
+  cursor = g.conn.execute(text("SELECT unit_id FROM Units WHERE tenant = (:name) AND floor = (:floor);"), params_dict)
+  g.conn.commit()
+  unit = []
+  for result in cursor:
+    unit.append(result[0])
+  if not unit:
+    return render_template('report.html', fail = "Your unit could not be found, please try again")
+  num_id = random.randint(15,1000)
+  time = str(date.today())
+  params_dict = {"num_id":num_id, "time":time, "desc":desc, "unit_id":unit[0]}
+  g.conn.execute(text('INSERT INTO Issues(number_id, time, description) VALUES (:num_id,:time,:desc);'), params_dict)
+  g.conn.commit()
+  g.conn.execute(text('INSERT INTO ResidesBy(unit_id,number_id) VALUES (:unit_id,:num_id);'), params_dict)
+  g.conn.commit()
+  return redirect('/submitted')
+x = True
+
+@app.route('/landlord', methods=['POST'])
+def research():
+  name = request.form['llName']
+  if not name:
+    return render_template('landlord.html', fail = "Please enter a name")
+  params_dict = {"name":name}
+  cursor = g.conn.execute(text("SELECT COUNT(r.Unit_ID) FROM ResidesBy r JOIN Holds h ON r.Unit_ID = h.Unit_ID JOIN Landlord l ON l.Landlord_ID = h.Landlord_ID WHERE l.name = (:name);"), params_dict)
+  g.conn.commit()
+  count = []
+  for result in cursor:
+    count.append(result[0])
+  if not count:
+    return render_template('landlord.html', fail = "Your entry could not be found, please try again")
+  cursor = g.conn.execute(text("SELECT COUNT(r.Landlord_ID) FROM Resolves r JOIN Landlord l ON l.Landlord_ID = r.Landlord_ID WHERE l.name = (:name);"), params_dict)
+  g.conn.commit()
+  count4 = []
+  for result in cursor:
+    count4.append(result[0])
+  if not count4:
+    return render_template('landlord.html', fail = "Your entry could not be found, please try again")
+  return render_template('landlord.html', value = "This landlord has had " + str(count[0]) + " issue(s) across their owned properties.", value2="They have resolved "+str(count4[0])+" of them.")
+
+landlordID = 0
+@app.route('/resolve', methods=['POST'])
+def fix():
+  global x
+  if x == True:
+    count=[]
+    name = request.form['llName']
+    if not name:
+      return render_template('resolve.html', fail = "Please enter a name")
+    params_dict = {"name":name}
+    cursor = g.conn.execute(text("SELECT r.number_ID FROM ResidesBy r JOIN Issues i ON r.number_ID = i.number_ID JOIN Holds h ON r.Unit_ID = h.Unit_ID JOIN Landlord l ON h.Landlord_ID = l.Landlord_ID WHERE l.name = (:name);"), params_dict)
+    g.conn.commit()
+    for result in cursor:
+      count.append(result[0])
+    if not count:
+      return render_template('resolve.html', fail = "Your entry could not be found, please try again")
+    count2 = []
+    cursor = g.conn.execute(text("SELECT i.Description FROM ResidesBy r JOIN Issues i ON r.number_ID = i.number_ID JOIN Holds h ON r.Unit_ID = h.Unit_ID JOIN Landlord l ON h.Landlord_ID = l.Landlord_ID WHERE l.name = (:name);"), params_dict)
+    g.conn.commit()
+    for result in cursor:
+      count2.append(result[0])
+    x = False
+    count3=[]
+    cursor = g.conn.execute(text("SELECT l.Landlord_ID FROM Landlord l WHERE l.name = (:name);"), params_dict)
+    g.conn.commit()
+    for result in cursor:
+      count3.append(result[0])
+    global landlordID
+    landlordID = count3[0]
+    return render_template('resolve.html', IssueList = count, ProbList = count2, postName = name)
+  else:
+    x = True
+    idRAW = request.form['resolve']
+    if not idRAW:
+      return render_template('resolve.html', IssueList = count, ProbList = count2, fail = "Please enter a number")
+    num_id = int(idRAW)
+    params_dict = {'num_id':num_id, 'll_id':landlordID}
+    g.conn.execute(text('INSERT INTO Resolves(landlord_id, number_id) VALUES (:ll_id, :num_id);'), params_dict)
+    g.conn.commit()
+  return redirect('/submitted')
 
 
 @app.route('/login')

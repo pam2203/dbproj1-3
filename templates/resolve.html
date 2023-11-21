@@ -1,0 +1,30 @@
+<html>
+	<style>
+		body{ 
+		  font-size: 15pt;
+		  font-family: arial;
+		}
+	</style>
+	<body>
+		<h1 style="text-align: center;">Resolve an Issue</h1>
+		{% if not IssueList %}
+		<form method = 'POST' action ='/resolve'>
+		    <div>
+	        <p>Enter your Name: <input type="text" id="llName" name="llName" placeholder="Type your name here..."></p>
+	    	</div>
+	    	<input type="submit" value="Enter"> 
+	    	<p>{{fail}}</p>
+	    </form>
+	    {% endif %}
+	    {% if IssueList %}
+	    <form method = 'POST' action ='/resolve'>
+	    	<div>
+	    		<p>These are the issues with your units: <br>{% for i in range(IssueList|length) %} {{ IssueList[i] }}: {{ ProbList[i] }} <br>{% endfor %}</p>
+		    	<p>Enter which Issue ID would you like to mark as resolved: <input type="text" id="resolve" name="resolve" placeholder="Enter ID here..."></p>
+		    </div>
+		    	<input type="submit" value="Enter"> 
+		</form>
+		{% endif %}
+	    <p><a href="home">Return to Home</a></p>
+	</body>
+</html>
